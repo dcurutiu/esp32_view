@@ -13,8 +13,6 @@
 #include "img_converters.h"
 #include "sdkconfig.h"
 
-// RAII wrapper around a BMP frame buffer.
-// Move-only: buffer is freed automatically when the object is destroyed.
 struct CapturedImage
 {
     uint8_t *data = nullptr;
@@ -53,8 +51,6 @@ struct CapturedImage
 
 struct AcquisitionManager
 {
-    // Returns the captured BMP image, or std::nullopt on failure.
-    // Buffer is freed automatically when the returned optional is destroyed.
     static bool init();
     static std::optional<CapturedImage> acquireImage();
 };

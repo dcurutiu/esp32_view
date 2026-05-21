@@ -6,8 +6,7 @@
 #include "wifi_passwd.h"
 
 #include "../led/led_manager.h"
-#include "../supabase/supabase_manager.h"
-#include "../supabase/api_secret.h"
+#include "../cloud_storage/api_secret.h"
 
 void WiFiManager::setup()
 {
@@ -18,7 +17,7 @@ void WiFiManager::setup()
 
 bool WiFiManager::testPing()
 {
-    bool ok = Ping.ping(ApiSecret::SUPABASE_HOST, 4);
+    bool ok = Ping.ping(ApiSecret::PING_HOST, 4);
 
     if (ok)
     {

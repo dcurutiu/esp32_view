@@ -1,7 +1,7 @@
 #include "camera/acquisition_manager.h"
 #include "camera/board_config.h"
+#include "cloud_storage/cloudinary_manager.h"
 #include "led/led_manager.h"
-#include "supabase/supabase_manager.h"
 #include "wifi/wifi_manager.h"
 
 void setup()
@@ -11,10 +11,10 @@ void setup()
     WiFiManager::setup();
     if (!AcquisitionManager::init())
     {
-        Serial.println("Camera initialization failed");
+        Serial.println("[main] Camera initialization failed");
         while (true)
         {
-            LEDManager::blinkRGB(LEDManager::COLOR_RED); // red
+            LEDManager::blinkRGB(LEDManager::COLOR_RED);
             delay(1000);
         }
     }
@@ -22,19 +22,19 @@ void setup()
 
 void loop()
 {
-    Serial.println("alive");
     bool pingResult = WiFiManager::testPing();
     if (pingResult)
     {
-        LEDManager::blinkRGB(LEDManager::COLOR_BLUE); // blue
-        // do only when I press the button
+        LEDManager::blinkRGB(LEDManager::COLOR_BLUE);
         if (digitalRead(BUTTON_PIN) == LOW)
         {
             const auto image = AcquisitionManager::acquireImage();
             if (image)
             {
-                SupabaseManager::uploadImage(*image);
-            } // image goes out of scope here → buffer freed automatically
+                Serial.printf("[main] Captured image: %u bytes\n", (unsigned)image->len);
+                Serial.println("[main] Uploading image to Cloudinary...");
+                CloudinaryManager::uploadImage(*image);
+            }
             delay(5000);
         }
     }

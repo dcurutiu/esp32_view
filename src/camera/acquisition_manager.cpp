@@ -4,6 +4,7 @@
 
 bool AcquisitionManager::init()
 {
+    Serial.println("[AcquisitionManager] Initializing camera...");
     camera_config_t config;
     config.ledc_channel = LEDC_CHANNEL_0;
     config.ledc_timer = LEDC_TIMER_0;
@@ -24,9 +25,9 @@ bool AcquisitionManager::init()
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
     config.xclk_freq_hz = 20000000;
-    config.frame_size = FRAMESIZE_UXGA;
-    ///config.pixel_format = PIXFORMAT_JPEG; // for streaming
-    config.pixel_format = PIXFORMAT_GRAYSCALE; 
+    config.frame_size = FRAMESIZE_VGA;
+    config.pixel_format = PIXFORMAT_JPEG; // for streaming
+    //config.pixel_format = PIXFORMAT_GRAYSCALE;
     config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
     config.fb_location = CAMERA_FB_IN_PSRAM;
     config.jpeg_quality = 12;
@@ -62,16 +63,14 @@ bool AcquisitionManager::init()
     pinMode(13, INPUT_PULLUP);
     pinMode(14, INPUT_PULLUP);
 #endif
-    Serial.println("Camera init ...");
-    // camera init
     esp_err_t err = esp_camera_init(&config);
 
     if (err != ESP_OK)
     {
-        Serial.printf("Camera init failed with error 0x%x", err);
+        Serial.printf("[AcquisitionManager] Camera init failed with error 0x%x\n", err);
         return false;
     }
-    Serial.println("Camera init successful");
+    Serial.println("[AcquisitionManager] Camera init successful!");
 
     sensor_t *s = esp_camera_sensor_get();
     // initial sensors are flipped vertically and colors are a bit saturated
@@ -100,14 +99,15 @@ bool AcquisitionManager::init()
 
 std::optional<CapturedImage> AcquisitionManager::acquireImage()
 {
+    Serial.printf("[Mem] acquireImage start       heap=%u  PSRAM=%u\n",
+                  ESP.getFreeHeap(), ESP.getFreePsram());
+
     camera_fb_t *fb = esp_camera_fb_get();
     if (!fb)
     {
-        Serial.println("Camera capture failed");
+        Serial.println("[AcquisitionManager] Camera capture failed!");
         return std::nullopt;
     }
-
-    Serial.printf("PSRAM found: %d, free PSRAM: %u bytes\n", psramFound(), ESP.getFreePsram());
 
     uint16_t w = fb->width;
     uint16_t h = fb->height;
@@ -117,13 +117,14 @@ std::optional<CapturedImage> AcquisitionManager::acquireImage()
     bool converted = frame2bmp(fb, &buf, &buf_len);
     esp_camera_fb_return(fb);
 
+    Serial.printf("[Mem] after frame2bmp          heap=%u  PSRAM=%u  bmp=%u bytes\n",
+                  ESP.getFreeHeap(), ESP.getFreePsram(), (unsigned)buf_len);
+
     if (!converted)
     {
-        Serial.println("BMP Conversion failed");
+        Serial.println("[AcquisitionManager] BMP Conversion failed");
         return std::nullopt;
     }
-
-    Serial.printf("BMP size: %u bytes\n", buf_len);
 
     CapturedImage img;
     img.data = buf;
