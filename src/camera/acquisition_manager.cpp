@@ -25,9 +25,12 @@ bool AcquisitionManager::init()
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
     config.xclk_freq_hz = 20000000;
-    config.frame_size = FRAMESIZE_VGA;
+    config.frame_size = FRAMESIZE_QSXGA;
+    
+    ;
     config.pixel_format = PIXFORMAT_JPEG; // for streaming
-    //config.pixel_format = PIXFORMAT_GRAYSCALE;
+    
+    // config.pixel_format = PIXFORMAT_GRAYSCALE;
     config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
     config.fb_location = CAMERA_FB_IN_PSRAM;
     config.jpeg_quality = 12;
@@ -39,21 +42,21 @@ bool AcquisitionManager::init()
     {
         if (psramFound())
         {
-            config.jpeg_quality = 10;
+            config.jpeg_quality = 12;
             config.fb_count = 2;
             config.grab_mode = CAMERA_GRAB_LATEST;
         }
         else
         {
             // Limit the frame size when PSRAM is not available
-            config.frame_size = FRAMESIZE_SVGA;
+            // config.frame_size = FRAMESIZE_SVGA;
             config.fb_location = CAMERA_FB_IN_DRAM;
         }
     }
     else
     {
         // Best option for face detection/recognition
-        config.frame_size = FRAMESIZE_SXGA;
+        // config.frame_size = FRAMESIZE_SVGA;
 #if CONFIG_IDF_TARGET_ESP32S3
         config.fb_count = 2;
 #endif
@@ -77,14 +80,14 @@ bool AcquisitionManager::init()
     if (s->id.PID == OV3660_PID)
     {
         s->set_vflip(s, 1); // flip it back
-        s->set_brightness(s, 1); // up the brightness just a bit
         s->set_saturation(s, -2); // lower the saturation
     }
+    s->set_brightness(s, 2); // +2 brightness for all sensors
     // drop down frame size for higher initial frame rate
-    if (config.pixel_format == PIXFORMAT_JPEG)
-    {
-        s->set_framesize(s, FRAMESIZE_QVGA);
-    }
+    // if (config.pixel_format == PIXFORMAT_JPEG)
+    // {
+    //     s->set_framesize(s, FRAMESIZE_HD);
+    // }
 
 #if defined(CAMERA_MODEL_M5STACK_WIDE) || defined(CAMERA_MODEL_M5STACK_ESP32CAM)
     s->set_vflip(s, 1);
@@ -112,19 +115,19 @@ std::optional<CapturedImage> AcquisitionManager::acquireImage()
     uint16_t w = fb->width;
     uint16_t h = fb->height;
 
-    uint8_t *buf = nullptr;
-    size_t buf_len = 0;
-    bool converted = frame2bmp(fb, &buf, &buf_len);
-    esp_camera_fb_return(fb);
-
-    Serial.printf("[Mem] after frame2bmp          heap=%u  PSRAM=%u  bmp=%u bytes\n",
-                  ESP.getFreeHeap(), ESP.getFreePsram(), (unsigned)buf_len);
-
-    if (!converted)
+    size_t buf_len = fb->len;
+    uint8_t *buf = (uint8_t *)ps_malloc(buf_len);
+    if (!buf)
     {
-        Serial.println("[AcquisitionManager] BMP Conversion failed");
+        Serial.println("[AcquisitionManager] ps_malloc failed for JPEG buffer");
+        esp_camera_fb_return(fb);
         return std::nullopt;
     }
+    memcpy(buf, fb->buf, buf_len);
+    esp_camera_fb_return(fb);
+
+    Serial.printf("[Mem] after jpeg copy           heap=%u  PSRAM=%u  jpeg=%u bytes\n",
+                  ESP.getFreeHeap(), ESP.getFreePsram(), (unsigned)buf_len);
 
     CapturedImage img;
     img.data = buf;

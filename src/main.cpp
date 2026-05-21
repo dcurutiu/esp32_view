@@ -26,16 +26,31 @@ void loop()
     if (pingResult)
     {
         LEDManager::blinkRGB(LEDManager::COLOR_BLUE);
-        if (digitalRead(BUTTON_PIN) == LOW)
+
+        static uint8_t uploadFailures = 0;
+
+        const auto image = AcquisitionManager::acquireImage();
+        if (image)
         {
-            const auto image = AcquisitionManager::acquireImage();
-            if (image)
+            Serial.printf("[main] Captured image: %u bytes\n", (unsigned)image->len);
+            Serial.println("[main] Uploading image to Cloudinary...");
+            bool ok = CloudinaryManager::uploadImage(*image);
+            if (ok)
             {
-                Serial.printf("[main] Captured image: %u bytes\n", (unsigned)image->len);
-                Serial.println("[main] Uploading image to Cloudinary...");
-                CloudinaryManager::uploadImage(*image);
+                uploadFailures = 0;
             }
-            delay(5000);
+            else
+            {
+                uploadFailures++;
+                Serial.printf("[main] Upload failed (%u/3)\n", uploadFailures);
+                if (uploadFailures >= 3)
+                {
+                    Serial.println("[main] 3 consecutive failures — restarting!");
+                    delay(500);
+                    ESP.restart();
+                }
+            }
         }
+        delay(60000);
     }
 }

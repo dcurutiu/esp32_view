@@ -40,7 +40,7 @@ static void printHeap(const char *tag)
                   tag, ESP.getFreeHeap(), ESP.getFreePsram());
 }
 
-void CloudinaryManager::uploadImage(const CapturedImage &img)
+bool CloudinaryManager::uploadImage(const CapturedImage &img)
 {
     printHeap("uploadImage start");
 
@@ -51,6 +51,7 @@ void CloudinaryManager::uploadImage(const CapturedImage &img)
 
     // Scope block so WiFiClientSecure is destroyed (and its TLS heap freed)
     // before we print the final heap snapshot.
+    int httpCode = 0;
     {
         WiFiClientSecure client;
         client.setInsecure();
@@ -60,7 +61,7 @@ void CloudinaryManager::uploadImage(const CapturedImage &img)
         if (!client.connect(ApiSecret::CLOUDINARY_HOST, 443))
         {
             Serial.println("[Cloudinary] TCP/TLS connect FAILED");
-            return;
+            return false;
         }
         Serial.printf("[Cloudinary] Connected in %u ms\n", millis() - t0);
         printHeap("after TLS connect");
@@ -83,8 +84,8 @@ void CloudinaryManager::uploadImage(const CapturedImage &img)
         char filePartHead[160];
         snprintf(filePartHead, sizeof(filePartHead),
                  "--%s\r\n"
-                 "Content-Disposition: form-data; name=\"file\"; filename=\"latest.bmp\"\r\n"
-                 "Content-Type: image/bmp\r\n\r\n",
+                 "Content-Disposition: form-data; name=\"file\"; filename=\"QSXGA_latest.jpg\"\r\n"
+                 "Content-Type: image/jpeg\r\n\r\n",
                  BOUNDARY);
 
         char partTail[64];
@@ -108,26 +109,46 @@ void CloudinaryManager::uploadImage(const CapturedImage &img)
         client.print(filePartHead);
         Serial.println("[Cloudinary] Text fields sent, streaming image ...");
 
-        // --- Send binary image in 4 KB chunks ---
+        // --- Stream binary image with deadline ---
         static constexpr size_t CHUNK = 4096;
+        static constexpr uint32_t STREAM_TIMEOUT_MS = 120000; // 2 min
         size_t sent = 0;
+        size_t lastPrint = 0;
         t0 = millis();
+        uint32_t deadline = t0 + STREAM_TIMEOUT_MS;
+
         while (sent < img.len)
         {
+            if (millis() > deadline)
+            {
+                Serial.printf("[Cloudinary] Stream timed out after %u ms at byte %u/%u\n",
+                              (unsigned)(millis() - t0), (unsigned)sent, (unsigned)img.len);
+                return false;
+            }
             if (!client.connected())
             {
                 Serial.printf("[Cloudinary] Connection dropped at byte %u/%u!\n",
                               (unsigned)sent, (unsigned)img.len);
-                return;
+                return false;
             }
+
             size_t toSend = min(CHUNK, img.len - sent);
             size_t written = client.write(img.data + sent, toSend);
             if (written == 0)
             {
-                Serial.printf("[Cloudinary] write() returned 0 at byte %u — aborting\n", (unsigned)sent);
-                return;
+                delay(10); // transient stall — retry
+                continue;
             }
             sent += written;
+
+            // Progress log every 8 KB
+            if (sent - lastPrint >= 8192)
+            {
+                Serial.printf("[Cloudinary] Sent %u/%u bytes (%.0f%%)\n",
+                              (unsigned)sent, (unsigned)img.len,
+                              100.0f * sent / img.len);
+                lastPrint = sent;
+            }
         }
         Serial.printf("[Cloudinary] Image fully sent in %u ms\n", millis() - t0);
 
@@ -136,15 +157,15 @@ void CloudinaryManager::uploadImage(const CapturedImage &img)
 
         // --- Read response ---
         t0 = millis();
-        uint32_t deadline = millis() + 50000;
-        while (!client.available() && client.connected() && millis() < deadline)
+        uint32_t responseDeadline = millis() + 50000;
+        while (!client.available() && client.connected() && millis() < responseDeadline)
             delay(10);
 
         if (!client.available())
         {
             Serial.printf("[Cloudinary] No response after %u ms (connected=%d)\n",
                           millis() - t0, (int)client.connected());
-            return;
+            return false;
         }
         Serial.printf("[Cloudinary] Response in %u ms\n", millis() - t0);
 
@@ -154,7 +175,6 @@ void CloudinaryManager::uploadImage(const CapturedImage &img)
         if (statusLen > 0 && statusBuf[statusLen - 1] == '\r')
             statusBuf[--statusLen] = '\0';
 
-        int httpCode = 0;
         {
             char *sp1 = strchr(statusBuf, ' ');
             if (sp1)
@@ -181,8 +201,8 @@ void CloudinaryManager::uploadImage(const CapturedImage &img)
         constexpr size_t BODY_CAP = 512;
         char body[BODY_CAP + 1] = {};
         size_t bodyLen = 0;
-        deadline = millis() + 10000;
-        while ((client.connected() || client.available()) && bodyLen < BODY_CAP && millis() < deadline)
+        responseDeadline = millis() + 10000;
+        while ((client.connected() || client.available()) && bodyLen < BODY_CAP && millis() < responseDeadline)
         {
             if (client.available())
                 body[bodyLen++] = (char)client.read();
@@ -213,5 +233,6 @@ void CloudinaryManager::uploadImage(const CapturedImage &img)
     } // WiFiClientSecure destroyed here → TLS heap freed
 
     printHeap("uploadImage end");
+    return httpCode >= 200 && httpCode < 300;
 }
 
