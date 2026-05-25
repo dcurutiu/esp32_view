@@ -2,18 +2,13 @@
 
 ## Overview
 
-The calibration routine finds the correct **AEC value** (exposure time) and
-**AGC gain** so that the average luminance of a captured frame matches a
-pre-defined target grey.  It runs once at boot and then every 30 minutes to
-track changing light conditions.
+The calibration routine finds the correct **AEC value** (exposure time) and **AGC gain** so that the average luminance of a captured frame matches a pre-defined target grey. It runs once at boot and then every 30 minutes to track changing light conditions.
 
 ---
 
 ## 1. The Problem
 
-A camera sensor maps scene radiance to pixel values.  For a given scene we
-want to choose an exposure `E` and gain `G` such that the mean pixel value
-sits at a target luminance `L_target`:
+A camera sensor maps scene radiance to pixel values. For a given scene we want to choose an exposure `E` and gain `G` such that the mean pixel value sits at a target luminance `L_target`:
 
 ```
 mean(frame) ≈ L_target
@@ -30,9 +25,7 @@ On the OV3660 the two independent controls are:
 
 ## 2. Luminance Metric
 
-Calibration captures in `PIXFORMAT_GRAYSCALE` at `FRAMESIZE_QVGA`
-(320 × 240 = 76 800 pixels).  Each pixel byte is a direct **Y (luma)**
-sample, so the metric is simply:
+Calibration captures in `PIXFORMAT_GRAYSCALE` at `FRAMESIZE_QVGA` (320 × 240 = 76 800 pixels). Each pixel byte is a direct **Y (luma)** sample, so the metric is simply:
 
 $$
 \bar{L} = \frac{1}{N} \sum_{i=0}^{N-1} p_i
@@ -57,8 +50,7 @@ $$
 \bar{L} = k \cdot E \cdot g(G)
 $$
 
-where `g(G)` is the gain look-up factor and `k` is a scene-dependent
-constant that absorbs reflectance, aperture, etc.
+where `g(G)` is the gain look-up factor and `k` is a scene-dependent constant that absorbs reflectance, aperture, etc.
 
 ### 3.2 One-step update rule
 
@@ -82,10 +74,7 @@ $$
 
 ### 3.3 Non-linear / saturated case
 
-Real sensors saturate at 255.  If the sensor clips, the measured `L_n` is
-an underestimate of the true scene brightness.  The controller still drives
-`E` in the right direction but overshoots less than a bang-bang controller
-would.  Define the per-step error:
+Real sensors saturate at 255. If the sensor clips, the measured `L_n` is an underestimate of the true scene brightness. The controller still drives `E` in the right direction but overshoots less than a bang-bang controller would. Define the per-step error:
 
 $$
 e_n = \bar{L}_n - L_{\text{target}}
@@ -97,9 +86,7 @@ $$
 E_1 = E_0 \cdot \frac{100}{255} \approx 0.39\, E_0
 $$
 
-The reduction is large enough to pull the sensor out of saturation in the
-next frame.  Convergence is **monotonically decreasing in error** as long as
-`L(E)` is strictly increasing.
+The reduction is large enough to pull the sensor out of saturation in the next frame. Convergence is **monotonically decreasing in error** as long as `L(E)` is strictly increasing.
 
 ### 3.4 Worked example — bright scene
 
@@ -124,8 +111,7 @@ next frame.  Convergence is **monotonically decreasing in error** as long as
 
 ## 4. Gain Cascade
 
-When the proportional step would require `E > 1200` the excess correction
-spills into gain:
+When the proportional step would require `E > 1200` the excess correction spills into gain:
 
 ```
 new_E  = E_n × (L_target / L_n)
@@ -138,14 +124,11 @@ else:
     E      = new_E
 ```
 
-The `/ 40` damping prevents gain from jumping to its ceiling in one step,
-which would overshoot on the next iteration.
+The `/ 40` damping prevents gain from jumping to its ceiling in one step, which would overshoot on the next iteration.
 
 ### 4.1 Maximum achievable brightness
 
-At `E = 1200`, `G = 30` the sensor is at its absolute maximum.  If even
-this cannot reach `L_target`, calibration ends after `MAX_ITERATIONS` and
-the best-effort values are used.
+At `E = 1200`, `G = 30` the sensor is at its absolute maximum. If even this cannot reach `L_target`, calibration ends after `MAX_ITERATIONS` and the best-effort values are used.
 
 ---
 
@@ -162,11 +145,7 @@ Either condition ends the sweep.
 
 ## 6. Why deinit / reinit Instead of set_pixformat
 
-`set_pixformat()` writes OV3660 sensor registers but does **not** reconfigure
-the ESP32 DMA engine.  The DMA buffers are sized and mapped during
-`esp_camera_init()` for the chosen pixel format.  Switching format at runtime
-leaves the DMA expecting the old stream layout, and every subsequent
-`esp_camera_fb_get()` returns `nullptr`.
+`set_pixformat()` writes OV3660 sensor registers but does **not** reconfigure the ESP32 DMA engine. The DMA buffers are sized and mapped during `esp_camera_init()` for the chosen pixel format. Switching format at runtime leaves the DMA expecting the old stream layout, and every subsequent `esp_camera_fb_get()` returns `nullptr`.
 
 The only reliable method is a full driver cycle:
 

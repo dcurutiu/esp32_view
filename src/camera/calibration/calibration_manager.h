@@ -7,6 +7,7 @@ struct ExposureSettings
 {
     uint32_t exposure_time = 0;   // AEC value (0–1200)
     uint32_t gain          = 0;   // AGC gain  (0–30)
+    bool     night_mode    = false;
 };
 
 struct CalibrationManager
@@ -17,7 +18,7 @@ struct CalibrationManager
     // night scenes while still producing a usable exposure.
     static constexpr uint8_t TARGET_GRAY    = 100;
     static constexpr uint8_t TOLERANCE      = 10;   // ±10 counts — good enough
-    static constexpr uint8_t MAX_ITERATIONS = 30;
+    static constexpr uint8_t MAX_ITERATIONS = 10;
 
     // Sweep-calibrates the sensor exposure in GRAYSCALE/QVGA mode (fast),
     // then restores JPEG + QSXGA for normal acquisition.

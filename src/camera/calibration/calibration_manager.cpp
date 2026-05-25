@@ -119,27 +119,43 @@ ExposureSettings CalibrationManager::calibrate()
     }
 
     if (!converged)
-        Serial.println("[Calibration] WARNING: did not converge within MAX_ITERATIONS — using best-effort values");
+        Serial.println("[Calibration] WARNING: did not converge within MAX_ITERATIONS — forcing night mode");
 
     result.exposure_time = aec;
     result.gain          = gain;
+    result.night_mode    = !converged;
 
-    // Restore JPEG + full resolution for normal acquisition.
+    // Restore for normal acquisition — night path uses halved XCLK.
     esp_camera_deinit();
-    AcquisitionManager::init();
+    if (result.night_mode)
+        AcquisitionManager::initNight();
+    else
+        AcquisitionManager::init();
 
-    // Re-apply the calibrated manual values to the freshly-inited sensor.
-    s = esp_camera_sensor_get();
-    if (s)
+    // Re-apply the calibrated (or forced-maximum) values to the freshly-inited sensor.
+    sensor_t *sn = esp_camera_sensor_get();
+    if (sn)
     {
-        s->set_exposure_ctrl(s, 0);
-        s->set_gain_ctrl(s, 0);
-        s->set_aec_value(s, aec);
-        s->set_agc_gain(s, gain);
+        sn->set_exposure_ctrl(sn, 0);
+        sn->set_gain_ctrl(sn, 0);
+        sn->set_agc_gain(sn, gain);
+
+        if (result.night_mode)
+        {
+            // initNight() already wrote VTS and AEC via direct registers —
+            // do NOT call set_aec_value() here or it would overwrite them.
+            sn->set_aec2(sn, 1);                       // OV3660 night-mode bit
+            sn->set_gainceiling(sn, GAINCEILING_128X); // raise AGC ceiling to ×128
+            Serial.println("[Calibration] Night mode active — XCLK=6MHz  VTS=4000  AEC_lines=3992  GAIN=30  aec2=ON  gainceiling=128x");
+        }
+        else
+        {
+            sn->set_aec_value(sn, aec);
+        }
     }
 
-    Serial.printf("[Calibration] Done — aec=%u  gain=%u  converged=%d\n",
-                  aec, gain, (int)converged);
+    Serial.printf("[Calibration] Done — aec=%u  gain=%u  night=%d\n",
+                  aec, gain, (int)result.night_mode);
 
     return result;
 }

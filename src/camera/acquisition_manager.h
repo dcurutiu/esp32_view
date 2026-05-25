@@ -56,6 +56,11 @@ struct AcquisitionManager
     static camera_config_t make_config(pixformat_t fmt, framesize_t fs, uint8_t fb_count = 1);
 
     static bool init();
+
+    // Night-mode init: same as init() but XCLK is halved (10 MHz) so each
+    // line period takes twice as long, doubling real-world exposure at AEC=1200.
+    static bool initNight();
+
     static std::optional<CapturedImage> acquireImage();
 };
 
