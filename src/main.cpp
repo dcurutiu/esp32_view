@@ -1,8 +1,12 @@
 #include "camera/acquisition_manager.h"
 #include "camera/board_config.h"
+#include "camera/calibration/calibration_manager.h"
 #include "cloud_storage/cloudinary_manager.h"
 #include "led/led_manager.h"
 #include "wifi/wifi_manager.h"
+
+static constexpr uint32_t CALIBRATION_INTERVAL_MS = 30UL * 60UL * 1000UL;
+static uint32_t lastCalibrationMs = 0;
 
 void setup()
 {
@@ -18,10 +22,20 @@ void setup()
             delay(1000);
         }
     }
+
+    CalibrationManager::calibrate();
+    lastCalibrationMs = millis();
 }
 
 void loop()
 {
+    if (millis() - lastCalibrationMs >= CALIBRATION_INTERVAL_MS)
+    {
+        Serial.println("[main] 30-minute interval — recalibrating exposure");
+        CalibrationManager::calibrate();
+        lastCalibrationMs = millis();
+    }
+
     bool pingResult = WiFiManager::testPing();
     if (pingResult)
     {
@@ -37,14 +51,14 @@ void loop()
             return;
         }
 
-        // check again: most of the time false negatives are due to transient network issues
-            // and the image is actually there. 
-        if (CloudinaryManager::imageExists())
-        {
-            Serial.println("[main] Image already on Cloudinary [2] — sleeping");
-            delay(60000);
-            return;
-        }
+        // // check again: most of the time false negatives are due to transient network issues
+        //     // and the image is actually there. 
+        // if (CloudinaryManager::imageExists())
+        // {
+        //     Serial.println("[main] Image already on Cloudinary [2] — sleeping");
+        //     delay(60000);
+        //     return;
+        // }
 
         const auto image = AcquisitionManager::acquireImage();
         if (image)

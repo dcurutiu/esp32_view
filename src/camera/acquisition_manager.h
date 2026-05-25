@@ -51,6 +51,10 @@ struct CapturedImage
 
 struct AcquisitionManager
 {
+    // Builds a camera_config_t with the board pin assignments and the given
+    // format / frame-size / fb_count.  Does NOT call esp_camera_init().
+    static camera_config_t make_config(pixformat_t fmt, framesize_t fs, uint8_t fb_count = 1);
+
     static bool init();
     static std::optional<CapturedImage> acquireImage();
 };
