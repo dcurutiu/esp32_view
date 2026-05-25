@@ -29,6 +29,23 @@ void loop()
 
         static uint8_t uploadFailures = 0;
 
+        // If the latest image already exists on Cloudinary, skip capture/upload to save resources.
+        if (CloudinaryManager::imageExists())
+        {
+            Serial.println("[main] Image already on Cloudinary — sleeping");
+            delay(60000);
+            return;
+        }
+
+        // check again: most of the time false negatives are due to transient network issues
+            // and the image is actually there. 
+        if (CloudinaryManager::imageExists())
+        {
+            Serial.println("[main] Image already on Cloudinary [2] — sleeping");
+            delay(60000);
+            return;
+        }
+
         const auto image = AcquisitionManager::acquireImage();
         if (image)
         {
@@ -42,15 +59,25 @@ void loop()
             else
             {
                 uploadFailures++;
-                Serial.printf("[main] Upload failed (%u/3)\n", uploadFailures);
-                if (uploadFailures >= 3)
+                Serial.printf("[main] Upload failed (%u/2)\n", uploadFailures);
+                if (uploadFailures >= 2)
                 {
-                    Serial.println("[main] 3 consecutive failures — restarting!");
+                    Serial.println("[main] 2 consecutive failures — restarting!");
                     delay(500);
                     ESP.restart();
                 }
             }
         }
         delay(60000);
+    }
+    else
+    {
+        delay(25000);
+        Serial.println("[main] No WiFi connection — restarting!");
+        if (!WiFiManager::testPing())
+        {
+            Serial.println("[main] Still no connection after delay — restarting now!");
+            ESP.restart();
+        }
     }
 }

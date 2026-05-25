@@ -6,6 +6,7 @@
 struct CloudinaryManager
 {
     static bool uploadImage(const CapturedImage &img);
+    static bool imageExists();
 };
 
 #endif // CLOUDINARY_MANAGER_H

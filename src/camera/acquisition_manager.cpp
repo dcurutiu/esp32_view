@@ -80,9 +80,9 @@ bool AcquisitionManager::init()
     if (s->id.PID == OV3660_PID)
     {
         s->set_vflip(s, 1); // flip it back
-        s->set_saturation(s, -2); // lower the saturation
+        s->set_saturation(s, 1); // lower the saturation
     }
-    s->set_brightness(s, 2); // +2 brightness for all sensors
+    s->set_brightness(s, -1); // +2 brightness for all sensors
     // drop down frame size for higher initial frame rate
     // if (config.pixel_format == PIXFORMAT_JPEG)
     // {

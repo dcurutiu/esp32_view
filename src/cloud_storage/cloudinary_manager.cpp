@@ -5,6 +5,44 @@
 
 #include "api_secret.h"
 
+// Checks whether the public delivery URL for the configured public_id exists.
+// Uses a lightweight HEAD request to res.cloudinary.com and returns true on HTTP 200.
+
+bool CloudinaryManager::imageExists()
+{
+    Serial.println("[Cloudinary] Checking if image exists on Cloudinary...");
+    WiFiClientSecure client;
+    client.setInsecure();
+    client.setTimeout(10);
+    const char *host = "res.cloudinary.com";
+    if (!client.connect(host, 443))
+    {
+        Serial.println("[Cloudinary] HEAD connect FAILED");
+        return false;
+    }
+
+    char path[128];
+    snprintf(path, sizeof(path), "/%s/image/upload/%s.jpg", ApiSecret::CLOUD_NAME, ApiSecret::PUBLIC_ID);
+
+    client.printf("HEAD %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", path, host);
+
+    // Read status line only
+    char statusLine[128] = {};
+    int len = client.readBytesUntil('\n', statusLine, sizeof(statusLine) - 1);
+    if (len > 0 && statusLine[len - 1] == '\r')
+        statusLine[--len] = '\0';
+
+    client.stop();
+
+    int statusCode = 0;
+    char *sp = strchr(statusLine, ' ');
+    if (sp)
+        statusCode = atoi(sp + 1);
+    bool exists = statusCode >= 200 && statusCode < 400; // 2xx OK or 3xx redirect
+    Serial.printf("[Cloudinary] imageExists -> %d (code=%d %s)\n", exists, statusCode, statusLine);
+    return exists;
+}
+
 static constexpr const char *BOUNDARY = "ESP32Boundary42";
 
 // Writes the first string value for `key` from a flat JSON object into `out`.
