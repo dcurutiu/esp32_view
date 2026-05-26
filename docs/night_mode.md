@@ -114,28 +114,3 @@ sn->set_gainceiling(sn, GAINCEILING_128X);
 ```
 
 ---
-
-## PlantUML — Night Mode Decision
-
-```plantuml
-@startuml
-skinparam defaultFontName Monospaced
-skinparam backgroundColor #FAFAFA
-
-start
-
-:Run calibration sweep\n(up to 10 frames);
-
-if (converged?) then (yes)
-  #LightGreen:Normal mode\n──────────────\nAcquisitionManager::init()\nXCLK = 20 MHz\nAEC  = calibrated\nGAIN = calibrated;
-else (no)
-  #LightCoral:Night mode\n──────────────\nAcquisitionManager::initNight()\nXCLK = 6 MHz\nVTS  = 4 000 lines  (reg 0x380e/f)\nAEC  = 3 992 lines  (reg 0x3500–02)\nGAIN = 30\naec2 = ON\ngainceiling = 128×;
-endif
-
-:Sensor locked in\nmanual AEC / AGC;
-
-:Acquire and upload\nnormal JPEG frames\nevery 60 s;
-
-stop
-@enduml
-```
