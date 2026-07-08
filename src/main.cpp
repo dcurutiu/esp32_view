@@ -29,13 +29,6 @@ void setup()
 
 void loop()
 {
-    if (millis() - lastCalibrationMs >= CALIBRATION_INTERVAL_MS)
-    {
-        Serial.println("[main] 30-minute interval — recalibrating exposure");
-        CalibrationManager::calibrate();
-        lastCalibrationMs = millis();
-    }
-
     bool pingResult = WiFiManager::testPing();
     if (pingResult)
     {
@@ -49,6 +42,16 @@ void loop()
             Serial.println("[main] Image already on Cloudinary — sleeping");
             delay(60000);
             return;
+        }
+
+        // Only recalibrate when we're actually about to capture a new image —
+        // no point lighting the indicator LED every 30 minutes if the current
+        // image is still up on Cloudinary and no capture will happen.
+        if (millis() - lastCalibrationMs >= CALIBRATION_INTERVAL_MS)
+        {
+            Serial.println("[main] 30-minute interval — recalibrating exposure");
+            CalibrationManager::calibrate();
+            lastCalibrationMs = millis();
         }
 
         // // check again: most of the time false negatives are due to transient network issues

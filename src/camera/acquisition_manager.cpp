@@ -157,7 +157,7 @@ std::optional<CapturedImage> AcquisitionManager::acquireImage()
                   ESP.getFreeHeap(), ESP.getFreePsram());
 
     LedIndicator::on();
-    delay(1000);   // visible warning before the shutter fires
+    delay(1300);   // visible warning before the shutter fires
 
     camera_fb_t *fb = esp_camera_fb_get();
     if (!fb)
@@ -182,7 +182,7 @@ std::optional<CapturedImage> AcquisitionManager::acquireImage()
     memcpy(buf, fb->buf, buf_len);
     esp_camera_fb_return(fb);
 
-    delay(1000);   // keep the LED visible for a second after the shot too
+    delay(1300);   // keep the LED visible for a second after the shot too
     LedIndicator::off();
 
     Serial.printf("[Mem] after jpeg copy           heap=%u  PSRAM=%u  jpeg=%u bytes\n",
