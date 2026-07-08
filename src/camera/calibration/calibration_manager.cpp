@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include "esp_camera.h"
 #include "camera/acquisition_manager.h"
+#include "camera/led_indicator.h"
 
 // Discard `count` frames to let the sensor stabilise after an exposure change.
 static void flush_frames(uint8_t count)
@@ -31,6 +32,10 @@ ExposureSettings CalibrationManager::calibrate()
 {
     ExposureSettings result{};
 
+    // LED stays lit for the entire calibration procedure so it's visible
+    // as a distinct, longer indication than a single capture flash.
+    LedIndicator::on();
+
     // Full deinit + reinit with GRAYSCALE/QVGA.
     // Simply calling set_pixformat() at runtime only writes sensor registers;
     // it does NOT reconfigure the DMA buffers, causing fb_get() to return
@@ -45,6 +50,7 @@ ExposureSettings CalibrationManager::calibrate()
     {
         Serial.printf("[Calibration] ERROR: camera reinit failed (0x%x) — restoring\n", err);
         AcquisitionManager::init();
+        LedIndicator::off();
         return result;
     }
 
@@ -156,6 +162,8 @@ ExposureSettings CalibrationManager::calibrate()
 
     Serial.printf("[Calibration] Done — aec=%u  gain=%u  night=%d\n",
                   aec, gain, (int)result.night_mode);
+
+    LedIndicator::off();
 
     return result;
 }

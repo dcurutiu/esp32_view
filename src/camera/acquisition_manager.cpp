@@ -156,10 +156,14 @@ std::optional<CapturedImage> AcquisitionManager::acquireImage()
     Serial.printf("[Mem] acquireImage start       heap=%u  PSRAM=%u\n",
                   ESP.getFreeHeap(), ESP.getFreePsram());
 
+    LedIndicator::on();
+    delay(1000);   // visible warning before the shutter fires
+
     camera_fb_t *fb = esp_camera_fb_get();
     if (!fb)
     {
         Serial.println("[AcquisitionManager] Camera capture failed!");
+        LedIndicator::off();
         return std::nullopt;
     }
 
@@ -172,10 +176,14 @@ std::optional<CapturedImage> AcquisitionManager::acquireImage()
     {
         Serial.println("[AcquisitionManager] ps_malloc failed for JPEG buffer");
         esp_camera_fb_return(fb);
+        LedIndicator::off();
         return std::nullopt;
     }
     memcpy(buf, fb->buf, buf_len);
     esp_camera_fb_return(fb);
+
+    delay(1000);   // keep the LED visible for a second after the shot too
+    LedIndicator::off();
 
     Serial.printf("[Mem] after jpeg copy           heap=%u  PSRAM=%u  jpeg=%u bytes\n",
                   ESP.getFreeHeap(), ESP.getFreePsram(), (unsigned)buf_len);

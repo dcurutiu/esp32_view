@@ -11,6 +11,7 @@
 #include "esp_timer.h"
 #include "fb_gfx.h"
 #include "img_converters.h"
+#include "led_indicator.h"
 #include "sdkconfig.h"
 
 struct CapturedImage
