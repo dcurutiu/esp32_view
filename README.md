@@ -112,20 +112,23 @@ Create the token in **flespi → Platform → Tokens** (template *MQTT ACL token
 
 The device no longer captures on a timer. It subscribes to `camera/command` and acts on the payload:
 
-| Payload   | Action                                                        |
-|-----------|---------------------------------------------------------------|
-| `acquire` | Captures an image and uploads it to Cloudinary (signed upload) |
+| Payload     | Action                                                         |
+|-------------|----------------------------------------------------------------|
+| `acquire`   | Captures an image and uploads it to Cloudinary (signed upload) |
+| `calibrate` | Runs the camera exposure calibration                           |
 
 Publish `acquire` to `camera/command` from flespi's MQTT Board.
 
 While handling `acquire`, the device publishes (not retained) on `camera/event`:
 
-| Message     | When                                   |
-|-------------|----------------------------------------|
-| `uploading` | the image was captured, upload started |
-| `uploaded`  | Cloudinary accepted the upload         |
+| Message       | When                                   |
+|---------------|----------------------------------------|
+| `uploading`   | the image was captured, upload started |
+| `uploaded`    | Cloudinary accepted the upload         |
+| `calibrating` | exposure calibration started           |
+| `calibrated`  | exposure calibration finished          |
 
-Exposure calibration is currently disabled. For an Android client see [`docs/ANDROID.md`](docs/ANDROID.md).
+Calibration is only run on the `calibrate` command; it is not done at startup. For an Android client see [`docs/ANDROID.md`](docs/ANDROID.md).
 
 ---
 

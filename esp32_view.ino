@@ -1,5 +1,6 @@
 #include "src/camera/acquisition_manager.h"
 #include "src/camera/board_config.h"
+#include "src/camera/calibration/calibration_manager.h"
 #include "src/cloud_storage/cloudinary_manager.h"
 #include "src/led/led_manager.h"
 #include "src/mqtt/mqtt_manager.h"
@@ -8,14 +9,24 @@
 static constexpr uint32_t PING_INTERVAL_MS = 60UL * 1000UL;
 
 static volatile bool acquireRequested = false;
+static volatile bool calibrateRequested = false;
 static uint8_t uploadFailures = 0;
 
 static void onCommand(const char *command)
 {
     if (strcmp(command, "acquire") == 0)
         acquireRequested = true;
+    else if (strcmp(command, "calibrate") == 0)
+        calibrateRequested = true;
     else
         Serial.printf("[main] Unknown command: %s\n", command);
+}
+
+static void calibrateCamera()
+{
+    MqttManager::publishEvent("calibrating");
+    CalibrationManager::calibrate();
+    MqttManager::publishEvent("calibrated");
 }
 
 static void acquireAndUpload()
@@ -73,6 +84,12 @@ void loop()
     {
         acquireRequested = false;
         acquireAndUpload();
+    }
+
+    if (calibrateRequested)
+    {
+        calibrateRequested = false;
+        calibrateCamera();
     }
 
     if (millis() - lastPingMs >= PING_INTERVAL_MS)
