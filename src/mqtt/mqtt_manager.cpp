@@ -45,6 +45,13 @@ bool MqttManager::isConnected()
     return mqtt.connected();
 }
 
+bool MqttManager::publishEvent(const char *event)
+{
+    if (!mqtt.connected())
+        return false;
+    return mqtt.publish(ApiSecret::MQTT_EVENT_TOPIC, event);
+}
+
 void MqttManager::loop()
 {
     if (!mqtt.connected())

@@ -21,6 +21,9 @@ struct MqttManager
     static void delayMs(uint32_t ms);
 
     static bool isConnected();
+
+    // Publishes a (non-retained) message on the event topic. Returns false if not connected.
+    static bool publishEvent(const char *event);
 };
 
 #endif // MQTT_MANAGER_H

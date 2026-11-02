@@ -88,6 +88,7 @@ struct ApiSecret
     constexpr static const char *MQTT_TOKEN        = "your_flespi_token";
     constexpr static const char *MQTT_STATUS_TOPIC = "camera/status";
     constexpr static const char *MQTT_COMMAND_TOPIC = "camera/command";
+    constexpr static const char *MQTT_EVENT_TOPIC   = "camera/event";
 };
 
 #endif // API_SECRET_H
@@ -115,7 +116,16 @@ The device no longer captures on a timer. It subscribes to `camera/command` and 
 |-----------|---------------------------------------------------------------|
 | `acquire` | Captures an image and uploads it to Cloudinary (signed upload) |
 
-Publish `acquire` to `camera/command` from flespi's MQTT Board. Exposure calibration is currently disabled. For an Android client see [`docs/ANDROID.md`](docs/ANDROID.md).
+Publish `acquire` to `camera/command` from flespi's MQTT Board.
+
+While handling `acquire`, the device publishes (not retained) on `camera/event`:
+
+| Message     | When                                   |
+|-------------|----------------------------------------|
+| `uploading` | the image was captured, upload started |
+| `uploaded`  | Cloudinary accepted the upload         |
+
+Exposure calibration is currently disabled. For an Android client see [`docs/ANDROID.md`](docs/ANDROID.md).
 
 ---
 

@@ -27,9 +27,11 @@ static void acquireAndUpload()
 
     Serial.printf("[main] Captured image: %u bytes\n", (unsigned)image->len);
     Serial.println("[main] Uploading image to Cloudinary...");
+    MqttManager::publishEvent("uploading");
     if (CloudinaryManager::uploadImage(*image))
     {
         uploadFailures = 0;
+        MqttManager::publishEvent("uploaded");
         return;
     }
 
