@@ -2,51 +2,13 @@
 
 #include <Arduino.h>
 #include <WiFiClientSecure.h>
+#include <mbedtls/sha1.h>
+#include <time.h>
 
 #include "api_secret.h"
 
-// Checks whether the public delivery URL for the configured public_id exists.
-// Uses a lightweight HEAD request to res.cloudinary.com and returns true on HTTP 200.
-
-bool CloudinaryManager::imageExists()
-{
-    Serial.println("[Cloudinary] Checking if image exists on Cloudinary...");
-    WiFiClientSecure client;
-    client.setInsecure();
-    client.setTimeout(10);
-    const char *host = "res.cloudinary.com";
-    if (!client.connect(host, 443))
-    {
-        Serial.println("[Cloudinary] HEAD connect FAILED");
-        return false;
-    }
-
-    char path[128];
-    snprintf(path, sizeof(path), "/%s/image/upload/%s.jpg", ApiSecret::CLOUD_NAME, ApiSecret::PUBLIC_ID);
-
-    client.printf("HEAD %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", path, host);
-
-    // Read status line only
-    char statusLine[128] = {};
-    int len = client.readBytesUntil('\n', statusLine, sizeof(statusLine) - 1);
-    if (len > 0 && statusLine[len - 1] == '\r')
-        statusLine[--len] = '\0';
-
-    client.stop();
-
-    int statusCode = 0;
-    char *sp = strchr(statusLine, ' ');
-    if (sp)
-        statusCode = atoi(sp + 1);
-    bool exists = statusCode >= 200 && statusCode < 400; // 2xx OK or 3xx redirect
-    Serial.printf("[Cloudinary] imageExists -> %d (code=%d %s)\n", exists, statusCode, statusLine);
-    return exists;
-}
-
 static constexpr const char *BOUNDARY = "ESP32Boundary42";
 
-// Writes the first string value for `key` from a flat JSON object into `out`.
-// Returns true on success.
 static bool extractJsonString(const char *json, const char *key, char *out, size_t outSize)
 {
     char search[64];
@@ -78,17 +40,57 @@ static void printHeap(const char *tag)
                   tag, ESP.getFreeHeap(), ESP.getFreePsram());
 }
 
+static bool waitForTime(uint32_t timeoutMs)
+{
+    static constexpr time_t MIN_VALID_EPOCH = 1700000000;
+    uint32_t start = millis();
+    while (time(nullptr) < MIN_VALID_EPOCH)
+    {
+        if (millis() - start > timeoutMs)
+            return false;
+        delay(200);
+    }
+    return true;
+}
+
+// Cloudinary signature: SHA-1 (hex) of the alphabetically sorted "key=value&..." params + API secret.
+static void signParams(const char *toSign, char *hexOut)
+{
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s%s", toSign, ApiSecret::API_SECRET);
+
+    uint8_t digest[20];
+    mbedtls_sha1(reinterpret_cast<const uint8_t *>(buf), strlen(buf), digest);
+    for (int i = 0; i < 20; i++)
+        sprintf(hexOut + i * 2, "%02x", digest[i]);
+    hexOut[40] = '\0';
+}
+
+static size_t appendField(char *out, size_t cap, size_t used, const char *name, const char *value)
+{
+    int n = snprintf(out + used, cap - used,
+                     "--%s\r\n"
+                     "Content-Disposition: form-data; name=\"%s\"\r\n\r\n"
+                     "%s\r\n",
+                     BOUNDARY, name, value);
+    return (n > 0 && used + n < cap) ? used + n : used;
+}
+
 bool CloudinaryManager::uploadImage(const CapturedImage &img)
 {
     printHeap("uploadImage start");
+
+    if (!waitForTime(15000))
+    {
+        Serial.println("[Cloudinary] Clock not synced (NTP) — cannot sign upload");
+        return false;
+    }
 
     char uploadPath[64];
     snprintf(uploadPath, sizeof(uploadPath), "/v1_1/%s/image/upload", ApiSecret::CLOUD_NAME);
 
     Serial.printf("[Cloudinary] Connecting to %s:443 ...\n", ApiSecret::CLOUDINARY_HOST);
 
-    // Scope block so WiFiClientSecure is destroyed (and its TLS heap freed)
-    // before we print the final heap snapshot.
     int httpCode = 0;
     {
         WiFiClientSecure client;
@@ -104,20 +106,24 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         Serial.printf("[Cloudinary] Connected in %u ms\n", millis() - t0);
         printHeap("after TLS connect");
 
-        // --- Build multipart parts ---
-        char presetPart[160];
-        snprintf(presetPart, sizeof(presetPart),
-                 "--%s\r\n"
-                 "Content-Disposition: form-data; name=\"upload_preset\"\r\n\r\n"
-                 "%s\r\n",
-                 BOUNDARY, ApiSecret::UPLOAD_PRESET);
+        // --- Build signed multipart fields ---
+        char timestamp[16];
+        snprintf(timestamp, sizeof(timestamp), "%lu", (unsigned long)time(nullptr));
 
-        char publicIdPart[160];
-        snprintf(publicIdPart, sizeof(publicIdPart),
-                 "--%s\r\n"
-                 "Content-Disposition: form-data; name=\"public_id\"\r\n\r\n"
-                 "%s\r\n",
-                 BOUNDARY, ApiSecret::PUBLIC_ID);
+        char toSign[160];
+        snprintf(toSign, sizeof(toSign), "invalidate=true&overwrite=true&public_id=%s&timestamp=%s",
+                 ApiSecret::PUBLIC_ID, timestamp);
+        char signature[41];
+        signParams(toSign, signature);
+
+        char fieldsPart[768];
+        size_t fieldsLen = 0;
+        fieldsLen = appendField(fieldsPart, sizeof(fieldsPart), fieldsLen, "api_key", ApiSecret::API_KEY);
+        fieldsLen = appendField(fieldsPart, sizeof(fieldsPart), fieldsLen, "timestamp", timestamp);
+        fieldsLen = appendField(fieldsPart, sizeof(fieldsPart), fieldsLen, "public_id", ApiSecret::PUBLIC_ID);
+        fieldsLen = appendField(fieldsPart, sizeof(fieldsPart), fieldsLen, "overwrite", "true");
+        fieldsLen = appendField(fieldsPart, sizeof(fieldsPart), fieldsLen, "invalidate", "true");
+        fieldsLen = appendField(fieldsPart, sizeof(fieldsPart), fieldsLen, "signature", signature);
 
         char filePartHead[160];
         snprintf(filePartHead, sizeof(filePartHead),
@@ -129,8 +135,7 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         char partTail[64];
         snprintf(partTail, sizeof(partTail), "\r\n--%s--\r\n", BOUNDARY);
 
-        size_t contentLength = strlen(presetPart) + strlen(publicIdPart) +
-                               strlen(filePartHead) + img.len + strlen(partTail);
+        size_t contentLength = fieldsLen + strlen(filePartHead) + img.len + strlen(partTail);
 
         Serial.printf("[Cloudinary] POST %s  content-length=%u\n", uploadPath, (unsigned)contentLength);
 
@@ -142,8 +147,7 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         client.print("Connection: close\r\n\r\n");
 
         // --- Send text fields ---
-        client.print(presetPart);
-        client.print(publicIdPart);
+        client.write(reinterpret_cast<const uint8_t *>(fieldsPart), fieldsLen);
         client.print(filePartHead);
         Serial.println("[Cloudinary] Text fields sent, streaming image ...");
 
