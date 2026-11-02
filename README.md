@@ -14,9 +14,25 @@ A lightweight embedded application that periodically captures photos and uploads
 | MCU | ESP32-S3 N16R8 (16 MB Flash, 8 MB OPI PSRAM) |
 | Camera | OV3660 |
 
+## Project Layout
+
+```
+esp32_view/
+├── esp32_view.ino      # sketch entry point (setup/loop)
+├── sketch.yaml         # arduino-cli defaults: board (+ partition scheme), port
+├── src/                # all modules, compiled recursively by arduino-cli
+│   ├── camera/
+│   ├── cloud_storage/
+│   ├── led/
+│   └── wifi/
+├── docs/
+├── .clangd             # clangd config (strips Xtensa flags clang rejects)
+└── .vscode/settings.json  # clangd arguments
+```
+
 ## Build System
 
-This project is configured for **PlatformIO**, but in practice PlatformIO can be notoriously sluggish — slow indexing, unresponsive IDE integration, and unpredictable build times are common pain points. If you hit a wall with PlatformIO, switching to **arduino-cli** is a practical and no-frills alternative.
+The project is built with **arduino-cli**. The sketch folder name matches `esp32_view.ino`, and `sketch.yaml` provides the board, partition scheme and port, so no extra flags are needed. `arduino-cli` compiles `src/` recursively; headers inside `src/` are included relative to the including file (e.g. `"../led/led_manager.h"`), and from the `.ino` as `"src/..."`, so no include-path flags are required either. Editor setup for VS Code + clangd is described at the end of this document.
 
 ---
 
@@ -92,6 +108,8 @@ The upload preset must be created once before the first flash:
 ### 1. Install toolchain
 
 ```bash
+arduino-cli config init
+arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 arduino-cli core update-index
 arduino-cli core install esp32:esp32
 ```
@@ -103,54 +121,114 @@ arduino-cli lib install "Adafruit NeoPixel@1.15.5"
 arduino-cli lib install "ESPping"
 ```
 
-### 3. Compile
+### 3. Find the board's port
 
 ```bash
-arduino-cli compile \
-  --fqbn esp32:esp32:esp32s3 \
-  --board-options PSRAM=opi,CDCOnBoot=cdc,PartitionScheme=custom \
-  .
+arduino-cli board list
 ```
 
-### 4. Upload
+Note the port (e.g. `COM3`). The "Board Name" shown (e.g. `ESP32 Family Device`) is only a guess from the generic Espressif USB ID — ignore it.
+
+### 4. Check `sketch.yaml`
+
+`sketch.yaml` holds the defaults, so no `--fqbn`, `--board-options` or `-p` flags are needed:
+
+```yaml
+default_fqbn: esp32:esp32:gen4-ESP32-S3R8n16:PartitionScheme=gen4esp32scheme4
+default_port: COM3
+default_programmer: ""
+```
+
+Set `default_port` to the port from step 3. The partition scheme is `Huge App (16MB APP)`; additional board options can be appended to the FQBN, comma-separated. No custom `partitions.csv` is needed.
+
+### 5. Compile
 
 ```bash
-arduino-cli upload \
-  -p COM6 \
-  --fqbn esp32:esp32:esp32s3 \
-  --board-options PSRAM=opi,CDCOnBoot=cdc,PartitionScheme=custom \
-  .
+arduino-cli compile
 ```
 
-> Adjust `-p COM6` to match your actual serial port.
+### 6. Upload
+
+```bash
+arduino-cli upload
+```
+
+To use a different port without editing `sketch.yaml`: `arduino-cli upload -p <port>`.
+
+### 7. Monitor serial output
+
+```bash
+arduino-cli monitor -c baudrate=115200
+```
+
+### Editor support (clangd)
+
+To (re)generate the compilation database used by clangd for completion and navigation:
+
+```bash
+arduino-cli compile --only-compilation-database --build-path build
+```
+
+Re-run it whenever you add files or libraries. See [Editor Setup](#editor-setup-vs-code--clangd) for the full VS Code configuration.
 
 ---
 
-## Serial Monitoring
+## Partition Scheme
 
-To monitor serial output without PlatformIO:
+The build uses the board's `Huge App (16MB APP)` partition scheme (`PartitionScheme=gen4esp32scheme4`), set in the FQBN in `sketch.yaml`. OTA updates are not supported by this scheme; use `gen4esp32scheme3` (Large App w/ OTA, 8MB APP/8MB OTA) if you need them.
+
+---
+
+## Editor Setup (VS Code + clangd)
+
+Out of the box, VS Code offers no linting or "Go to Definition" for Arduino code; a language server fixes that.
+
+### 1. Extensions
+
+Install **clangd**, **C/C++** and **Arduino** (recommended in `.vscode/extensions.json`), and disable the C/C++ IntelliSense engine so it doesn't clash with clangd: `"C_Cpp.intelliSenseEngine": "disabled"`.
+
+### 2. Generate `compile_commands.json`
+
+From the repo root (the build needs the gitignored `api_secret.h` and `wifi_passwd.h`, see [Configuration Files](#configuration-files)):
 
 ```bash
-arduino-cli monitor -p COM6 -c baudrate=115200
+arduino-cli compile --only-compilation-database --build-path build
 ```
 
----
+Re-run it whenever you add files or libraries. `build/` is gitignored.
 
-## Custom Partition Table
+### 3. `.clangd`
 
-When building with arduino-cli, the `PartitionScheme=custom` board option will use the `partitions.csv` file at the root of the project. Make sure it is present before compiling — it is already included in this repository.
+```yaml
+CompileFlags:
+  Remove: [-m*, -f*, -mlongcalls, -mtext-section-literals, -fstrict-volatile-bitfields, -free, -fipa-pta]
+Diagnostics:
+  UnusedIncludes: None
+```
 
----
+The Xtensa/GCC flags must be removed because clang rejects them.
 
-## Downsides of arduino-cli + VS Code
+### 4. `.vscode/settings.json`
 
-Using arduino-cli with a plain VS Code setup is functional but spartan:
+```json
+{
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/build",
+    "--query-driver=**/xtensa-esp32s3-elf-g++*",
+    "--background-index"
+  ],
+  "C_Cpp.intelliSenseEngine": "disabled"
+}
+```
 
-- **No linting** — syntax and semantic errors are only caught at compile time.
-- **No "Go to Definition / Declaration"** — `Ctrl+Click` navigation does not work without a proper language server configured for Arduino/C++.
+`--query-driver` lets clangd find the Xtensa toolchain headers. Run **clangd: Restart language server** afterwards.
+
+Optionally wrap the compile, upload and monitor commands in `.vscode/tasks.json`.
 
 ---
 
 ## Alternative: Arduino IDE
 
-Using the [Arduino IDE](https://www.arduino.cc/en/software) is also a valid option. It provides a simpler integrated experience (compilation, upload, and serial monitor in one window) and handles board/library management through a GUI, which can be easier to set up than arduino-cli.
+Using the [Arduino IDE](https://www.arduino.cc/en/software) is also an option. It provides an integrated experience (compilation, upload, and serial monitor in one window) and handles board/library management through a GUI.
+
+That said, I personally prefer arduino-cli: it works easily with VS Code and clangd, and everything (compile, upload, monitor) runs straight from VS Code's integrated terminal.

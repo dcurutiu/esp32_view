@@ -1,0 +1,5 @@
+{
+  "clangd.arguments": ["--compile-commands-dir=${workspaceFolder}/build",
+    "--query-driver=**/xtensa-esp32s3-elf-g++*", "--background-index"],
+  "C_Cpp.intelliSenseEngine": "disabled"
+}

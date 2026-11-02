@@ -2,8 +2,8 @@
 
 #include <Arduino.h>
 #include "esp_camera.h"
-#include "camera/acquisition_manager.h"
-#include "camera/led_indicator.h"
+#include "../acquisition_manager.h"
+#include "../led_indicator.h"
 
 // Discard `count` frames to let the sensor stabilise after an exposure change.
 static void flush_frames(uint8_t count)
