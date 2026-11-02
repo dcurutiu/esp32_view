@@ -89,6 +89,7 @@ struct ApiSecret
     constexpr static const char *MQTT_STATUS_TOPIC = "camera/status";
     constexpr static const char *MQTT_COMMAND_TOPIC = "camera/command";
     constexpr static const char *MQTT_EVENT_TOPIC   = "camera/event";
+    constexpr static const char *MQTT_UPLOAD_STATUS_TOPIC = "camera/upload-status";
 };
 
 #endif // API_SECRET_H
@@ -128,7 +129,9 @@ While handling `acquire`, the device publishes (not retained) on `camera/event`:
 | `calibrating` | exposure calibration started           |
 | `calibrated`  | exposure calibration finished          |
 
-Calibration is only run on the `calibrate` command; it is not done at startup. For an Android client see [`docs/ANDROID.md`](docs/ANDROID.md).
+Calibration is only run on the `calibrate` command; it is not done at startup.
+
+During an upload, every third progress report (the serial `Sent x/y bytes` lines, one per 8 KB) is also published as a percentage such as `40%` on `camera/upload-status` (not retained).
 
 ---
 

@@ -6,6 +6,7 @@
 #include <time.h>
 
 #include "api_secret.h"
+#include "../mqtt/mqtt_manager.h"
 
 static constexpr const char *BOUNDARY = "ESP32Boundary42";
 
@@ -156,6 +157,7 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         static constexpr uint32_t STREAM_TIMEOUT_MS = 120000; // 2 min
         size_t sent = 0;
         size_t lastPrint = 0;
+        uint8_t progressPrints = 0;
         t0 = millis();
         uint32_t deadline = t0 + STREAM_TIMEOUT_MS;
 
@@ -190,6 +192,13 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
                               (unsigned)sent, (unsigned)img.len,
                               100.0f * sent / img.len);
                 lastPrint = sent;
+
+                if (++progressPrints % 3 == 0)
+                {
+                    char status[8];
+                    snprintf(status, sizeof(status), "%.0f%%", 100.0f * sent / img.len);
+                    MqttManager::publishUploadStatus(status);
+                }
             }
         }
         Serial.printf("[Cloudinary] Image fully sent in %u ms\n", millis() - t0);

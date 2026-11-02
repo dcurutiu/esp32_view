@@ -52,6 +52,13 @@ bool MqttManager::publishEvent(const char *event)
     return mqtt.publish(ApiSecret::MQTT_EVENT_TOPIC, event);
 }
 
+bool MqttManager::publishUploadStatus(const char *status)
+{
+    if (!mqtt.connected())
+        return false;
+    return mqtt.publish(ApiSecret::MQTT_UPLOAD_STATUS_TOPIC, status);
+}
+
 void MqttManager::loop()
 {
     if (!mqtt.connected())
