@@ -10,6 +10,7 @@ static constexpr uint32_t PING_INTERVAL_MS = 60UL * 1000UL;
 
 static volatile bool acquireRequested = false;
 static volatile bool calibrateRequested = false;
+static volatile bool pingRequested = false;
 static uint8_t uploadFailures = 0;
 
 static void onCommand(const char *command)
@@ -18,6 +19,8 @@ static void onCommand(const char *command)
         acquireRequested = true;
     else if (strcmp(command, "calibrate") == 0)
         calibrateRequested = true;
+    else if (strcmp(command, "ping") == 0)
+        pingRequested = true;
     else
         Serial.printf("[main] Unknown command: %s\n", command);
 }
@@ -79,6 +82,12 @@ void loop()
     static uint32_t lastPingMs = 0;
 
     MqttManager::loop();
+
+    if (pingRequested)
+    {
+        pingRequested = false;
+        MqttManager::publishEvent("pong");
+    }
 
     if (acquireRequested)
     {
