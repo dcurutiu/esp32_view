@@ -2,3 +2,8 @@ CompileFlags:
   Remove: [-m*, -f*, -mlongcalls, -mtext-section-literals, -fstrict-volatile-bitfields, -free, -fipa-pta]
 Diagnostics:
   UnusedIncludes: None
+---
+If:
+  PathMatch: .*\.ino
+CompileFlags:
+  Add: [-xc++]

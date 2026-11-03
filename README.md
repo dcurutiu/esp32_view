@@ -1,6 +1,6 @@
 # esp32_view
 
-A lightweight embedded application that periodically captures photos and uploads them to [Cloudinary](https://cloudinary.com/) storage. Runs on an ESP32-S3 and is designed for unattended, continuous operation.
+A lightweight embedded application that captures photos on request (over MQTT) and uploads them to [Cloudinary](https://cloudinary.com/) storage. Runs on an ESP32-S3 and is designed for unattended, continuous operation.
 
 > **⚠️ Disclaimer**
 > Cloudinary is used here as a **free, reliable HTTP endpoint to store images during prototyping and testing**. The free tier provides 25 credits/month — sufficient for thousands of small image uploads. It is not an official integration and carries no guarantees around uptime, data retention, or compliance beyond Cloudinary's own terms.
@@ -24,6 +24,7 @@ esp32_view/
 │   ├── camera/
 │   ├── cloud_storage/
 │   ├── led/
+│   ├── mqtt/
 │   └── wifi/
 ├── docs/
 ├── .clangd             # clangd config (strips Xtensa flags clang rejects)
@@ -70,36 +71,67 @@ struct ApiSecret
     constexpr static const char *CLOUDINARY_HOST = "api.cloudinary.com";
     constexpr static const char *CLOUD_NAME      = "your_cloud_name";
     constexpr static const char *API_KEY         = "your_api_key";
-
-    // Unsigned upload preset — create it in the Cloudinary dashboard:
-    //   Settings → Upload → Upload presets → Add upload preset
-    //   Signing Mode : Unsigned
-    //   Overwrite    : ✓  (so every upload replaces the same asset)
-    constexpr static const char *UPLOAD_PRESET = "esp32_preset";
+    constexpr static const char *API_SECRET      = "your_api_secret";
 
     // Fixed public_id → the asset URL never changes between uploads
+    // (signed uploads send overwrite=true and invalidate=true, no upload preset needed)
     constexpr static const char *PUBLIC_ID = "latest";
 
     // Reliable ICMP-responsive host for the connectivity ping check
     // (api.cloudinary.com blocks ICMP)
     constexpr static const char *PING_HOST = "8.8.8.8";
+
+    // flespi MQTT broker. MQTT_TOKEN is a flespi token with MQTT access (see docs/GHID-FLESPI.md).
+    // Topics must not start with "flespi/".
+    constexpr static const char *MQTT_HOST         = "mqtt.flespi.io";
+    constexpr static const uint16_t MQTT_PORT      = 8883;
+    constexpr static const char *MQTT_TOKEN        = "your_flespi_token";
+    constexpr static const char *MQTT_STATUS_TOPIC = "camera/status";
+    constexpr static const char *MQTT_COMMAND_TOPIC = "camera/command";
+    constexpr static const char *MQTT_EVENT_TOPIC   = "camera/event";
+    constexpr static const char *MQTT_UPLOAD_STATUS_TOPIC = "camera/upload-status";
 };
 
 #endif // API_SECRET_H
 ```
 
-You can find `CLOUD_NAME` and `API_KEY` in your Cloudinary dashboard under **Settings → API Keys**.
+You can find `CLOUD_NAME`, `API_KEY` and `API_SECRET` in your Cloudinary dashboard under **Settings → API Keys**.
 
-#### Upload preset setup
+#### Signed uploads
 
-The upload preset must be created once before the first flash:
+Uploads are **signed** with the API secret, so no upload preset is needed (unsigned presets cannot enable overwrite). Each upload sends `public_id`, `overwrite=true` and `invalidate=true`, so every capture replaces the same asset and the CDN cache is cleared. The signature needs a valid clock, so the device syncs time over NTP (`time.google.com`) after connecting to Wi-Fi.
 
-1. Go to **Cloudinary Dashboard → Settings → Upload → Upload presets**
-2. Click **Add upload preset**
-3. Set **Signing Mode** to `Unsigned`
-4. Enable **Overwrite**
-5. Name it to match `UPLOAD_PRESET` in `api_secret.h` (default: `esp32_preset`)
-6. Save
+> The API secret is stored in the device's flash. Keep `api_secret.h` out of git (it is gitignored).
+
+#### Online status and commands over MQTT (flespi)
+
+After connecting to Wi-Fi the device connects to flespi's MQTT broker (`mqtt.flespi.io:8883`, TLS) using a flespi token as the username and an empty password. It publishes a retained `online` message on `camera/status`, and registers a last will so the broker publishes a retained `offline` there if the device disappears. Subscribe to `camera/status` (for example with flespi's MQTT Board) to see it.
+
+Create the token in **flespi → Platform → Tokens** (template *MQTT ACL token*) with publish/subscribe access limited to `camera/#`, and put it in `MQTT_TOKEN`. See [`docs/GHID-FLESPI.md`](docs/GHID-FLESPI.md) for details.
+
+#### Commands
+
+The device no longer captures on a timer. It subscribes to `camera/command` and acts on the payload:
+
+| Payload     | Action                                                         |
+|-------------|----------------------------------------------------------------|
+| `acquire`   | Captures an image and uploads it to Cloudinary (signed upload) |
+| `calibrate` | Runs the camera exposure calibration                           |
+
+Publish `acquire` to `camera/command` from flespi's MQTT Board.
+
+While handling `acquire`, the device publishes (not retained) on `camera/event`:
+
+| Message       | When                                   |
+|---------------|----------------------------------------|
+| `uploading`   | the image was captured, upload started |
+| `uploaded`    | Cloudinary accepted the upload         |
+| `calibrating` | exposure calibration started           |
+| `calibrated`  | exposure calibration finished          |
+
+Calibration is only run on the `calibrate` command; it is not done at startup.
+
+During an upload, every third progress report (the serial `Sent x/y bytes` lines, one per 8 KB) is also published as a percentage such as `40%` on `camera/upload-status` (not retained).
 
 ---
 
@@ -119,6 +151,7 @@ arduino-cli core install esp32:esp32
 ```bash
 arduino-cli lib install "Adafruit NeoPixel@1.15.5"
 arduino-cli lib install "ESPping"
+arduino-cli lib install "PubSubClient"
 ```
 
 ### 3. Find the board's port
@@ -204,9 +237,14 @@ CompileFlags:
   Remove: [-m*, -f*, -mlongcalls, -mtext-section-literals, -fstrict-volatile-bitfields, -free, -fipa-pta]
 Diagnostics:
   UnusedIncludes: None
+---
+If:
+  PathMatch: .*\.ino
+CompileFlags:
+  Add: [-xc++]
 ```
 
-The Xtensa/GCC flags must be removed because clang rejects them.
+The Xtensa/GCC flags must be removed because clang rejects them. The second fragment makes clangd parse the `.ino` sketch as C++.
 
 ### 4. `.vscode/settings.json`
 

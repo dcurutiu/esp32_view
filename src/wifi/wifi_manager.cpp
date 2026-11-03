@@ -13,6 +13,7 @@ void WiFiManager::setup()
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
     WiFi.begin(WifiPasswd::ssid, WifiPasswd::password);
+    configTime(0, 0, "time.google.com"); // NTP, required for signed Cloudinary uploads
 }
 
 bool WiFiManager::testPing()
