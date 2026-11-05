@@ -16,13 +16,25 @@ static uint8_t uploadFailures = 0;
 static void onCommand(const char *command)
 {
     if (strcmp(command, "acquire") == 0)
+    {
         acquireRequested = true;
+    }
     else if (strcmp(command, "calibrate") == 0)
+    {
         calibrateRequested = true;
+    }
     else if (strcmp(command, "ping") == 0)
+    {
         pingRequested = true;
+    }
+    else if (strcmp(command, "reboot") == 0)
+    {
+        ESP.restart();
+    }
     else
+    {
         Serial.printf("[main] Unknown command: %s\n", command);
+    }
 }
 
 static void calibrateCamera()
@@ -36,7 +48,9 @@ static void acquireAndUpload()
 {
     const auto image = AcquisitionManager::acquireImage();
     if (!image)
+    {
         return;
+    }
 
     Serial.printf("[main] Captured image: %u bytes\n", (unsigned)image->len);
     Serial.println("[main] Uploading image to Cloudinary...");
@@ -63,15 +77,14 @@ void setup()
     Serial.begin(115200);
     LEDManager::setup();
     WiFiManager::setup();
+    delay(500);
     MqttManager::setCommandHandler(onCommand);
     MqttManager::setup();
     if (!AcquisitionManager::init())
     {
         Serial.println("[main] Camera initialization failed");
-        while (true)
-        {
-            delay(1000);
-        }
+        delay(5000);
+        ESP.restart();
     }
 }
 

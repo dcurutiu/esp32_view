@@ -1,7 +1,7 @@
 #ifndef CLOUDINARY_MANAGER_H
 #define CLOUDINARY_MANAGER_H
 
-#include "../camera/acquisition_manager.h"
+#include "src/camera/acquisition_manager.h"
 
 struct CloudinaryManager
 {

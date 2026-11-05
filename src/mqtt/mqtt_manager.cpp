@@ -5,7 +5,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 
-#include "../cloud_storage/api_secret.h"
+#include "src/cloud_storage/api_secret.h"
 
 static constexpr uint16_t KEEP_ALIVE_S = 90;
 static constexpr uint32_t RECONNECT_INTERVAL_MS = 5000;
@@ -57,6 +57,13 @@ bool MqttManager::publishUploadStatus(const char *status)
     if (!mqtt.connected())
         return false;
     return mqtt.publish(ApiSecret::MQTT_UPLOAD_STATUS_TOPIC, status);
+}
+
+bool MqttManager::publishError(const char *error)
+{
+    if (!mqtt.connected())
+        return false;
+    return mqtt.publish(ApiSecret::MQTT_ERROR_TOPIC, error);
 }
 
 void MqttManager::loop()

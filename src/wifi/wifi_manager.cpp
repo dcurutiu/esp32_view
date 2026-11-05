@@ -3,13 +3,14 @@
 #include <ESPping.h>
 #include <WiFi.h>
 
-#include "../cloud_storage/api_secret.h"
-#include "../led/led_manager.h"
+#include "src/cloud_storage/api_secret.h"
+#include "src/led/led_manager.h"
 #include "wifi_passwd.h"
 
 void WiFiManager::setup()
 {
     WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
     WiFi.setAutoReconnect(true);
     WiFi.begin(WifiPasswd::ssid, WifiPasswd::password);
     configTime(0, 0, "time.google.com"); // NTP, required for signed Cloudinary uploads

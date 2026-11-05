@@ -27,6 +27,9 @@ struct MqttManager
 
     // Publishes the upload progress (e.g. "40%"), non-retained. Returns false if not connected.
     static bool publishUploadStatus(const char *status);
+
+    // Publishes an error message on the error topic. Returns false if not connected.
+    static bool publishError(const char *error);
 };
 
 #endif // MQTT_MANAGER_H

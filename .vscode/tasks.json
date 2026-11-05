@@ -2,23 +2,8 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Arduino: Generate compile database",
-            "type": "process",
-            "command": "arduino-cli",
-            "args": [
-                "compile",
-                "--only-compilation-database",
-                "--build-path",
-                "build"
-            ],
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "problemMatcher": []
-        },
-        {
             "label": "Arduino: Compile",
-            "type": "process",
+            "type": "shell",
             "command": "arduino-cli",
             "args": [
                 "compile",
@@ -29,8 +14,6 @@
             "options": {
                 "cwd": "${workspaceFolder}"
             },
-            "dependsOn": "Arduino: Generate compile database",
-            "dependsOrder": "sequence",
             "group": {
                 "kind": "build",
                 "isDefault": true

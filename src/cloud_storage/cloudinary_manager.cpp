@@ -1,12 +1,12 @@
 #include "cloudinary_manager.h"
 
 #include <Arduino.h>
-#include <WiFiClientSecure.h>
 #include <mbedtls/sha1.h>
 #include <time.h>
+#include <WiFiClientSecure.h>
 
 #include "api_secret.h"
-#include "../mqtt/mqtt_manager.h"
+#include "src/mqtt/mqtt_manager.h"
 
 static constexpr const char *BOUNDARY = "ESP32Boundary42";
 
@@ -16,10 +16,14 @@ static bool extractJsonString(const char *json, const char *key, char *out, size
     snprintf(search, sizeof(search), "\"%s\"", key);
     const char *pos = strstr(json, search);
     if (!pos)
+    {
         return false;
+    }
     pos += strlen(search);
     while (*pos == ' ' || *pos == ':')
+    {
         pos++;
+    }
     if (*pos == '"')
     {
         pos++;
@@ -37,8 +41,7 @@ static bool extractJsonString(const char *json, const char *key, char *out, size
 
 static void printHeap(const char *tag)
 {
-    Serial.printf("[Mem] %-30s  heap=%u  PSRAM=%u\n",
-                  tag, ESP.getFreeHeap(), ESP.getFreePsram());
+    Serial.printf("[Mem] %-30s  heap=%u  PSRAM=%u\n", tag, ESP.getFreeHeap(), ESP.getFreePsram());
 }
 
 static bool waitForTime(uint32_t timeoutMs)
@@ -48,7 +51,9 @@ static bool waitForTime(uint32_t timeoutMs)
     while (time(nullptr) < MIN_VALID_EPOCH)
     {
         if (millis() - start > timeoutMs)
+        {
             return false;
+        }
         delay(200);
     }
     return true;
@@ -63,17 +68,24 @@ static void signParams(const char *toSign, char *hexOut)
     uint8_t digest[20];
     mbedtls_sha1(reinterpret_cast<const uint8_t *>(buf), strlen(buf), digest);
     for (int i = 0; i < 20; i++)
+    {
         sprintf(hexOut + i * 2, "%02x", digest[i]);
+    }
     hexOut[40] = '\0';
 }
 
 static size_t appendField(char *out, size_t cap, size_t used, const char *name, const char *value)
 {
-    int n = snprintf(out + used, cap - used,
-                     "--%s\r\n"
-                     "Content-Disposition: form-data; name=\"%s\"\r\n\r\n"
-                     "%s\r\n",
-                     BOUNDARY, name, value);
+    int n = snprintf(
+        out + used,
+        cap - used,
+        "--%s\r\n"
+        "Content-Disposition: form-data; name=\"%s\"\r\n\r\n"
+        "%s\r\n",
+        BOUNDARY,
+        name,
+        value
+    );
     return (n > 0 && used + n < cap) ? used + n : used;
 }
 
@@ -84,6 +96,7 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
     if (!waitForTime(15000))
     {
         Serial.println("[Cloudinary] Clock not synced (NTP) — cannot sign upload");
+        MqttManager::publishError("Clock not synced (NTP) — cannot sign upload");
         return false;
     }
 
@@ -102,6 +115,7 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         if (!client.connect(ApiSecret::CLOUDINARY_HOST, 443))
         {
             Serial.println("[Cloudinary] TCP/TLS connect FAILED");
+            MqttManager::publishError("Cloudinary TCP/TLS connect FAILED");
             return false;
         }
         Serial.printf("[Cloudinary] Connected in %u ms\n", millis() - t0);
@@ -112,8 +126,13 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         snprintf(timestamp, sizeof(timestamp), "%lu", (unsigned long)time(nullptr));
 
         char toSign[160];
-        snprintf(toSign, sizeof(toSign), "invalidate=true&overwrite=true&public_id=%s&timestamp=%s",
-                 ApiSecret::PUBLIC_ID, timestamp);
+        snprintf(
+            toSign,
+            sizeof(toSign),
+            "invalidate=true&overwrite=true&public_id=%s&timestamp=%s",
+            ApiSecret::PUBLIC_ID,
+            timestamp
+        );
         char signature[41];
         signParams(toSign, signature);
 
@@ -127,11 +146,14 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         fieldsLen = appendField(fieldsPart, sizeof(fieldsPart), fieldsLen, "signature", signature);
 
         char filePartHead[160];
-        snprintf(filePartHead, sizeof(filePartHead),
-                 "--%s\r\n"
-                 "Content-Disposition: form-data; name=\"file\"; filename=\"QSXGA_latest.jpg\"\r\n"
-                 "Content-Type: image/jpeg\r\n\r\n",
-                 BOUNDARY);
+        snprintf(
+            filePartHead,
+            sizeof(filePartHead),
+            "--%s\r\n"
+            "Content-Disposition: form-data; name=\"file\"; filename=\"QSXGA_latest.jpg\"\r\n"
+            "Content-Type: image/jpeg\r\n\r\n",
+            BOUNDARY
+        );
 
         char partTail[64];
         snprintf(partTail, sizeof(partTail), "\r\n--%s--\r\n", BOUNDARY);
@@ -153,11 +175,10 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         Serial.println("[Cloudinary] Text fields sent, streaming image ...");
 
         // --- Stream binary image with deadline ---
-        static constexpr size_t CHUNK = 4096;
+        static constexpr size_t CHUNK = 16384;
         static constexpr uint32_t STREAM_TIMEOUT_MS = 120000; // 2 min
         size_t sent = 0;
         size_t lastPrint = 0;
-        uint8_t progressPrints = 0;
         t0 = millis();
         uint32_t deadline = t0 + STREAM_TIMEOUT_MS;
 
@@ -165,14 +186,19 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         {
             if (millis() > deadline)
             {
-                Serial.printf("[Cloudinary] Stream timed out after %u ms at byte %u/%u\n",
-                              (unsigned)(millis() - t0), (unsigned)sent, (unsigned)img.len);
+                Serial.printf(
+                    "[Cloudinary] Stream timed out after %u ms at byte %u/%u\n",
+                    (unsigned)(millis() - t0),
+                    (unsigned)sent,
+                    (unsigned)img.len
+                );
+                MqttManager::publishError("Cloudinary stream timed out");
                 return false;
             }
             if (!client.connected())
             {
-                Serial.printf("[Cloudinary] Connection dropped at byte %u/%u!\n",
-                              (unsigned)sent, (unsigned)img.len);
+                Serial.printf("[Cloudinary] Connection dropped at byte %u/%u!\n", (unsigned)sent, (unsigned)img.len);
+                MqttManager::publishError("Cloudinary connection dropped");
                 return false;
             }
 
@@ -180,25 +206,23 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
             size_t written = client.write(img.data + sent, toSend);
             if (written == 0)
             {
-                delay(10); // transient stall — retry
+                delay(1);
                 continue;
             }
             sent += written;
-
-            // Progress log every 8 KB
-            if (sent - lastPrint >= 8192)
+            if (sent - lastPrint >= 65536)
             {
-                Serial.printf("[Cloudinary] Sent %u/%u bytes (%.0f%%)\n",
-                              (unsigned)sent, (unsigned)img.len,
-                              100.0f * sent / img.len);
+                Serial.printf(
+                    "[Cloudinary] Sent %u/%u bytes (%.0f%%)\n",
+                    (unsigned)sent,
+                    (unsigned)img.len,
+                    100.0f * sent / img.len
+                );
                 lastPrint = sent;
 
-                if (++progressPrints % 3 == 0)
-                {
-                    char status[8];
-                    snprintf(status, sizeof(status), "%.0f%%", 100.0f * sent / img.len);
-                    MqttManager::publishUploadStatus(status);
-                }
+                char status[8];
+                snprintf(status, sizeof(status), "%.0f%%", 100.0f * sent / img.len);
+                MqttManager::publishUploadStatus(status);
             }
         }
         Serial.printf("[Cloudinary] Image fully sent in %u ms\n", millis() - t0);
@@ -210,12 +234,16 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         t0 = millis();
         uint32_t responseDeadline = millis() + 50000;
         while (!client.available() && client.connected() && millis() < responseDeadline)
+        {
             delay(10);
+        }
 
         if (!client.available())
         {
-            Serial.printf("[Cloudinary] No response after %u ms (connected=%d)\n",
-                          millis() - t0, (int)client.connected());
+            Serial.printf(
+                "[Cloudinary] No response after %u ms (connected=%d)\n", millis() - t0, (int)client.connected()
+            );
+            MqttManager::publishError("Cloudinary no response");
             return false;
         }
         Serial.printf("[Cloudinary] Response in %u ms\n", millis() - t0);
@@ -224,7 +252,9 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         char statusBuf[128] = {};
         int statusLen = client.readBytesUntil('\n', statusBuf, sizeof(statusBuf) - 1);
         if (statusLen > 0 && statusBuf[statusLen - 1] == '\r')
+        {
             statusBuf[--statusLen] = '\0';
+        }
 
         {
             char *sp1 = strchr(statusBuf, ' ');
@@ -242,9 +272,13 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
             int len = client.readBytesUntil('\n', lineBuf, sizeof(lineBuf) - 1);
             lineBuf[len] = '\0';
             if (len > 0 && lineBuf[len - 1] == '\r')
+            {
                 lineBuf[--len] = '\0';
+            }
             if (len == 0)
+            {
                 break;
+            }
             Serial.printf("[Cloudinary] hdr: %s\n", lineBuf);
         }
 
@@ -256,9 +290,13 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         while ((client.connected() || client.available()) && bodyLen < BODY_CAP && millis() < responseDeadline)
         {
             if (client.available())
+            {
                 body[bodyLen++] = (char)client.read();
+            }
             else
+            {
                 delay(10);
+            }
         }
         body[bodyLen] = '\0';
 
@@ -266,18 +304,29 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
         if (httpCode >= 200 && httpCode < 300)
         {
             if (extractJsonString(body, "secure_url", valueBuf, sizeof(valueBuf)))
+            {
                 Serial.printf("[Cloudinary] Upload OK → %s\n", valueBuf);
+            }
             else
+            {
                 Serial.println("[Cloudinary] Upload OK");
+            }
         }
         else
         {
             if (!extractJsonString(body, "message", valueBuf, sizeof(valueBuf)))
+            {
                 extractJsonString(body, "error", valueBuf, sizeof(valueBuf));
+            }
             if (valueBuf[0])
+            {
                 Serial.printf("[Cloudinary] Error: %s\n", valueBuf);
+                MqttManager::publishError(valueBuf);
+            }
             else if (bodyLen > 0)
+            {
                 Serial.printf("[Cloudinary] Body: %s\n", body);
+            }
         }
 
         client.stop();
@@ -286,4 +335,3 @@ bool CloudinaryManager::uploadImage(const CapturedImage &img)
     printHeap("uploadImage end");
     return httpCode >= 200 && httpCode < 300;
 }
-
