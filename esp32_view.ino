@@ -34,7 +34,6 @@ static void calibrateCamera()
 
 static void acquireAndUpload()
 {
-    LEDManager::blinkRGB(LEDManager::COLOR_BLUE);
     const auto image = AcquisitionManager::acquireImage();
     if (!image)
         return;
@@ -71,7 +70,6 @@ void setup()
         Serial.println("[main] Camera initialization failed");
         while (true)
         {
-            LEDManager::blinkRGB(LEDManager::COLOR_RED);
             delay(1000);
         }
     }

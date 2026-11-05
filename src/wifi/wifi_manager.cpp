@@ -3,10 +3,9 @@
 #include <ESPping.h>
 #include <WiFi.h>
 
-#include "wifi_passwd.h"
-
-#include "../led/led_manager.h"
 #include "../cloud_storage/api_secret.h"
+#include "../led/led_manager.h"
+#include "wifi_passwd.h"
 
 void WiFiManager::setup()
 {
@@ -19,15 +18,11 @@ void WiFiManager::setup()
 bool WiFiManager::testPing()
 {
     bool ok = Ping.ping(ApiSecret::PING_HOST, 4);
-
     if (ok)
     {
-        LEDManager::blinkRGB(LEDManager::COLOR_GREEN); // green
         Serial.println("Ping successful!");
         return true;
     }
-
-    LEDManager::blinkRGB(LEDManager::COLOR_RED); // red
     Serial.println("Ping failed!");
     return false;
 }

@@ -1,0 +1,72 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Arduino: Generate compile database",
+            "type": "process",
+            "command": "arduino-cli",
+            "args": [
+                "compile",
+                "--only-compilation-database",
+                "--build-path",
+                "build"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Arduino: Compile",
+            "type": "process",
+            "command": "arduino-cli",
+            "args": [
+                "compile",
+                "--build-path",
+                "build",
+                "--verbose"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": "Arduino: Generate compile database",
+            "dependsOrder": "sequence",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Arduino: Upload",
+            "type": "process",
+            "command": "arduino-cli",
+            "args": [
+                "upload",
+                "--build-path",
+                "build"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": "Arduino: Compile",
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+                {
+            "label": "Arduino: Monitor",
+            "type": "process",
+            "command": "arduino-cli",
+            "args": [
+                "monitor",
+                "-c",
+                "baudrate=115200"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        }
+    ]
+}
